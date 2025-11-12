@@ -10,7 +10,7 @@ import random
 from typing import Any, Dict, Generator, List, Optional
 from jinja2 import Template, TemplateError
 
-from backend.core.ai_client.factory import create_ai_client
+from core.ai_client.factory import create_ai_client
 from core.pipeline.base import PipelineContext, StageProcessor
 from django.utils import timezone
 

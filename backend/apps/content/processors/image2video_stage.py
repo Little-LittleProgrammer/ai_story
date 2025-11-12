@@ -10,7 +10,7 @@ import os
 from typing import Any, Dict, Generator, List, Optional
 
 from django.conf import settings
-from backend.core.ai_client.factory import create_ai_client
+from core.ai_client.factory import create_ai_client
 from core.ai_client.image2video_client import TaskStatus, VideoGenerator
 from core.pipeline.base import PipelineContext, StageProcessor, StageResult
 from django.utils import timezone

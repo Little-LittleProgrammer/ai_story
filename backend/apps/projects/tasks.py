@@ -9,7 +9,6 @@ import logging
 from typing import Dict, Any
 from django.utils import timezone
 
-from backend.apps.projects.utils import parse_json
 from core.redis import RedisStreamPublisher
 from apps.content.processors.llm_stage import LLMStageProcessor
 from apps.content.processors.text2image_stage import Text2ImageStageProcessor

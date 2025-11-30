@@ -469,19 +469,10 @@ def generate_jianying_draft(
 
     logger.info(f"开始生成剪映草稿, 项目: {project_id}, 任务ID: {task_id}")
 
-    publisher = RedisStreamPublisher(project_id, 'jianying_draft')
 
     try:
         # 获取项目
         project = Project.objects.get(id=project_id)
-
-        # 发布开始消息
-        publisher.publish_stage_update(
-            status='processing',
-            progress=0,
-            message='开始生成剪映草稿'
-        )
-
         # 检查视频生成阶段是否完成
         video_stage = ProjectStage.objects.filter(
             project=project,
@@ -506,11 +497,6 @@ def generate_jianying_draft(
 
         logger.info(f"找到 {len(valid_scenes)} 个有效视频场景")
 
-        publisher.publish_stage_update(
-            status='processing',
-            progress=30,
-            message=f'找到 {len(valid_scenes)} 个视频片段，开始生成草稿'
-        )
 
         # 创建剪映草稿生成器
         draft_folder_path = options.pop('draft_folder_path', None)
@@ -530,19 +516,6 @@ def generate_jianying_draft(
         project.jianying_draft_path = draft_path
         project.save(update_fields=['jianying_draft_path'])
 
-        publisher.publish_stage_update(
-            status='completed',
-            progress=100,
-            message='剪映草稿生成完成'
-        )
-
-        publisher.publish_done(
-            full_text=draft_path,
-            metadata={
-                'draft_path': draft_path,
-                'video_count': len(valid_scenes)
-            }
-        )
 
         return {
             'success': True,
@@ -554,13 +527,11 @@ def generate_jianying_draft(
     except Project.DoesNotExist:
         error_msg = f'项目不存在: {project_id}'
         logger.error(error_msg)
-        publisher.publish_error(error_msg)
         return {'success': False, 'error': error_msg}
 
     except ValueError as e:
         error_msg = str(e)
         logger.error(f'参数错误: {error_msg}')
-        publisher.publish_error(error_msg)
         return {'success': False, 'error': error_msg}
 
     except Exception as e:
@@ -568,7 +539,6 @@ def generate_jianying_draft(
         logger.exception(error_msg)
 
         # 发布错误消息
-        publisher.publish_error(error_msg, retry_count=self.request.retries)
 
         # 重试
         if self.request.retries < self.max_retries:
@@ -578,4 +548,4 @@ def generate_jianying_draft(
         return {'success': False, 'error': error_msg}
 
     finally:
-        publisher.close()
+        pass

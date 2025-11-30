@@ -163,8 +163,6 @@ export default {
           options: this.options,
         });
 
-        // 建立WebSocket连接接收实时进度
-        this.connectWebSocket(result.websocket_url);
       } catch (error) {
         this.isGenerating = false;
         this.errorMessage = error.response?.data?.error || error.message || '生成失败';

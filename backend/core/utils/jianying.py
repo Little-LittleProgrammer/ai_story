@@ -1,8 +1,7 @@
 # 导入模块
 import os
 import pyJianYingDraft as draft
-from pyJianYingDraft import IntroType, TransitionType, trange, tim
-from pathlib import Path
+from pyJianYingDraft import IntroType, trange, tim
 
 # 设置草稿文件夹
 draft_folder = draft.DraftFolder(r"D:\JianyingPro Drafts")
@@ -112,8 +111,8 @@ for i, video_file in enumerate(video_files):
 script.save()
 
 # 打印结果
-print(f"成功创建多视频拼接+对应字幕草稿！")
-print(f"拼接的视频文件及对应字幕：")
+print("成功创建多视频拼接+对应字幕草稿！")
+print("拼接的视频文件及对应字幕：")
 for i, file in enumerate(video_files, 1):
     subtitle = get_video_subtitle(file, subtitle_path)
     print(f"  {i}. 视频：{os.path.basename(file)} -> 字幕：{subtitle}")

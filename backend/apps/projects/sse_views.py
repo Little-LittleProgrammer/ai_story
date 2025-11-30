@@ -11,10 +11,6 @@ from django.http import StreamingHttpResponse
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework import status
 
 from core.redis.subscriber import RedisStreamSubscriber
 

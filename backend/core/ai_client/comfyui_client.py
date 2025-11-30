@@ -17,6 +17,7 @@ import requests
 import websocket
 
 from .base import Text2ImageClient as BaseText2ImageClient, AIResponse
+from core.utils.file_storage import image_storage, video_storage
 
 
 class ComfyUIClient(BaseText2ImageClient):
@@ -398,16 +399,25 @@ class ComfyUIClient(BaseText2ImageClient):
 
                         # 保存图片 (如果启用)
                         if self.save_images:
-                            os.makedirs(self.output_dir, exist_ok=True)
+                            # 使用日期分层存储
                             filename = f"{node_id}_{idx}_{prompt_id[:8]}.png"
-                            filepath = os.path.join(self.output_dir, filename)
 
-                            # 保存图片
+                            # 保存图片到PIL对象
                             image = Image.open(BytesIO(image_data))
-                            image.save(filepath)
 
-                            # 构建 URL (假设可以通过 HTTP 访问)
-                            image_url = f"http://127.0.0.1:8010/api/v1/content/storage/image/{filename}"
+                            # 将PIL图片转换为字节
+                            img_bytes = BytesIO()
+                            image.save(img_bytes, format='PNG')
+                            img_bytes.seek(0)
+
+                            # 使用日期分层存储保存文件
+                            full_path, relative_path = image_storage.save_file(
+                                filename=filename,
+                                content=img_bytes.getvalue()
+                            )
+
+                            # 构建 URL (使用相对路径)
+                            image_url = f"http://127.0.0.1:8010/api/v1/content/storage/image/{relative_path}"
                             image_urls.append({"url": image_url})
 
                         else:
@@ -540,9 +550,14 @@ class ComfyUIClient(BaseText2ImageClient):
                     for idx, image_info in enumerate(node_output['gifs']):
                         # 保存视频 (如果启用)
                         if self.save_images:
-                            os.makedirs(self.video_output_dir, exist_ok=True)
+                            # 使用日期分层存储
                             filename = f"{node_id}_{idx}_{prompt_id[:8]}.mp4"
-                            filepath = os.path.join(self.video_output_dir, filename)
+
+                            # 获取唯一的文件路径
+                            full_path, relative_path = video_storage.get_unique_filepath(
+                                filename=filename,
+                                create_dirs=True
+                            )
 
                             # 定义下载进度回调
                             def download_progress(downloaded: int, total: int):
@@ -550,17 +565,17 @@ class ComfyUIClient(BaseText2ImageClient):
                                     percent = (downloaded / total) * 100
                                     print(f"下载进度: {downloaded}/{total} bytes ({percent:.1f}%)")
 
-                            # 流式下载并直接写入文件
+                            # 流式下载并直接写入文件 (使用完整路径)
                             self._get_video(
                                 image_info['filename'],
                                 image_info['subfolder'],
                                 image_info['type'],
-                                output_path=filepath,
+                                output_path=str(full_path),
                                 progress_callback=download_progress
                             )
 
-                            # 构建 URL (假设可以通过 HTTP 访问)
-                            image_url = f"http://127.0.0.1:8010/api/v1/content/storage/video/{filename}"
+                            # 构建 URL (使用相对路径)
+                            image_url = f"http://127.0.0.1:8010/api/v1/content/storage/video/{relative_path}"
                             image_urls.append({"url": image_url})
 
                         else:

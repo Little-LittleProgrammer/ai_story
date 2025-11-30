@@ -725,10 +725,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
             {
                 "task_id": task.id,
                 "channel": channel,
-                "message": "剪映草稿生成任务已启动",
-                "websocket_url": f"/ws/projects/{project.id}/jianying_draft/",
+                "draft_path": task.result.get("draft_path", "todo"),
             },
-            status=status.HTTP_202_ACCEPTED,
+            status=status.HTTP_200_OK,
         )
 
 

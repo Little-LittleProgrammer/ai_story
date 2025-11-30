@@ -162,8 +162,22 @@ export default {
           options: this.options,
         });
 
+        // 成功后显示结果信息
+        if (result.draft_path) {
+          this.draftPath = result.draft_path;
+          this.videoCount = result.video_count;
+          this.progress = 100;
+          this.progressMessage = '生成完成！';
+
+          // 延迟2秒后自动关闭模态框
+          setTimeout(() => {
+            this.closeProgressModal();
+            this.isGenerating = false;
+          }, 2000);
+        }
+
       } catch (error) {
-        // this.isGenerating = false;
+        this.isGenerating = false;
         this.errorMessage = error.response?.data?.error || error.message || '生成失败';
         console.error('生成剪映草稿失败:', error);
       }

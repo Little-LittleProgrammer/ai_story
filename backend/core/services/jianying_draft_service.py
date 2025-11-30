@@ -48,7 +48,7 @@ class JianyingDraftGenerator:
             # 从Django配置读取，如果没有则使用默认路径
             self.draft_folder_path = getattr(
                 settings,
-                '',
+                'JIANYING_DRAFT_FOLDER',
                 os.path.expanduser('~/Documents/JianyingPro Drafts')
             )
 

@@ -85,7 +85,6 @@
         <!-- 操作按钮 -->
         <div class="modal-action">
           <button
-            v-if="!isGenerating"
             class="btn"
             @click="closeProgressModal"
           >
@@ -164,95 +163,16 @@ export default {
         });
 
       } catch (error) {
-        this.isGenerating = false;
+        // this.isGenerating = false;
         this.errorMessage = error.response?.data?.error || error.message || '生成失败';
         console.error('生成剪映草稿失败:', error);
       }
     },
 
-    connectWebSocket(wsUrl) {
-      // 使用项目的WebSocket客户端
-      const baseUrl = process.env.VUE_APP_WS_URL || 'ws://localhost:8000';
-      const fullUrl = `${baseUrl}${wsUrl}`;
-
-      this.ws = wsClient.connect(fullUrl, {
-        onMessage: this.handleWebSocketMessage,
-        onError: this.handleWebSocketError,
-        onClose: this.handleWebSocketClose,
-      });
-    },
-
-    handleWebSocketMessage(data) {
-      console.log('WebSocket消息:', data);
-
-      switch (data.type) {
-        case 'stage_update':
-          this.progress = data.progress || 0;
-          this.progressMessage = data.message || '处理中...';
-          break;
-
-        case 'done':
-          this.progress = 100;
-          this.progressMessage = '生成完成！';
-          this.draftPath = data.metadata?.draft_path || data.full_text || '';
-          this.videoCount = data.metadata?.video_count;
-          this.isGenerating = false;
-
-          // 触发事件通知父组件
-          this.$emit('generated', {
-            draftPath: this.draftPath,
-            videoCount: this.videoCount,
-          });
-
-          // 关闭WebSocket
-          if (this.ws) {
-            wsClient.close(this.ws);
-            this.ws = null;
-          }
-          break;
-
-        case 'error':
-          this.errorMessage = data.error || '生成失败';
-          this.isGenerating = false;
-
-          // 关闭WebSocket
-          if (this.ws) {
-            wsClient.close(this.ws);
-            this.ws = null;
-          }
-          break;
-
-        default:
-          console.log('未知消息类型:', data.type);
-      }
-    },
-
-    handleWebSocketError(error) {
-      console.error('WebSocket错误:', error);
-      this.errorMessage = 'WebSocket连接错误';
-      this.isGenerating = false;
-    },
-
-    handleWebSocketClose() {
-      console.log('WebSocket已关闭');
-      if (this.isGenerating) {
-        // 如果还在生成中就关闭了，说明出错了
-        this.isGenerating = false;
-        if (!this.errorMessage && !this.draftPath) {
-          this.errorMessage = '连接已断开';
-        }
-      }
-    },
+  
 
     closeProgressModal() {
       this.$refs.progressModal.close();
-
-      // 关闭WebSocket
-      if (this.ws) {
-        wsClient.close(this.ws);
-        this.ws = null;
-      }
-
       // 重置状态
       setTimeout(() => {
         this.progress = 0;

@@ -90,7 +90,7 @@
                   />
 
                   <button
-                    class="btn btn-primary"
+                    class="btn btn-primary btn-sm"
                     :disabled="saving"
                     @click="handleSaveProjectInfo"
                   >

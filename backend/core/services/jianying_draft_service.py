@@ -339,7 +339,7 @@ class JianyingDraftGenerator:
             video_files.append(video_path)
 
             # 获取字幕文本
-            subtitle = scene.get('narration_text', '')
+            subtitle = scene.get('narration', '')
             subtitles.append(subtitle)
 
         if not video_files:

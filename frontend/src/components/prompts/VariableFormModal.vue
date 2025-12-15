@@ -322,6 +322,13 @@ export default {
     },
 
     async handleSubmit() {
+      // 如果正在输入新分组，先保存新分组
+      if (this.showNewGroup && this.newGroup.trim()) {
+        this.form.group = this.newGroup.trim();
+        this.showNewGroup = false;
+        this.newGroup = '';
+      }
+
       // 验证表单
       const keyValid = await this.validateKey();
       const valueValid = this.validateValue();

@@ -42,7 +42,7 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 
 # 3. 安装依赖
-pip install -r requirements/development.txt
+pip install -r requirements.txt
 
 # 4. 执行数据库迁移
 python manage.py migrate

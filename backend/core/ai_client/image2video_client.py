@@ -280,6 +280,12 @@ class Image2VideoClient(BaseImage2VideoClient):
         if fast_pretreatment:
             payload["fast_pretreatment"] = True
 
+        # 打印请求参数
+        logger.info(f"图生视频请求参数:")
+        logger.info(f"  URL: {self.api_url}")
+        logger.info(f"  Headers: {json.dumps({k: v if k != 'Authorization' else 'Bearer ***' for k, v in headers.items()}, indent=2, ensure_ascii=False)}")
+        logger.info(f"  Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
+
         try:
             timeout = self.config.get('timeout', 300)  # 视频生成可能需要更长时间
 

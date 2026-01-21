@@ -6,8 +6,11 @@
 import requests
 import json
 import time
+import logging
 from typing import Dict, Any
 from .base import Text2ImageClient as BaseText2ImageClient, AIResponse
+
+logger = logging.getLogger(__name__)
 
 
 class Text2ImageClient(BaseText2ImageClient):
@@ -72,6 +75,12 @@ class Text2ImageClient(BaseText2ImageClient):
             payload["prompt_optimizer"] = True
 
         # 注意：minimaxi API 暂不支持 negative_prompt、resolution 等参数
+
+        # 打印请求参数
+        logger.info(f"文生图请求参数:")
+        logger.info(f"  URL: {self.api_url}")
+        logger.info(f"  Headers: {json.dumps({k: v if k != 'Authorization' else 'Bearer ***' for k, v in headers.items()}, indent=2, ensure_ascii=False)}")
+        logger.info(f"  Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
 
         try:
             timeout = self.config.get('timeout', 60)

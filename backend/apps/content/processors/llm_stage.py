@@ -15,7 +15,7 @@ from apps.models.models import ModelProvider
 from apps.projects.models import Project, ProjectStage
 from apps.prompts.models import PromptTemplate
 from apps.projects.utils import parse_storyboard_json
-
+from apps.projects.utils import parse_json
 logger = logging.getLogger(__name__)
 
 
@@ -473,7 +473,7 @@ class LLMStageProcessor(StageProcessor):
 
             video_stage = ProjectStage.objects.filter(
                 project=project,
-                stage_type="video_generation"
+                stage_type__in=["image_generation", "video_generation"]
             ).first()
             if video_stage:
                 # 深拷贝现有数据
@@ -497,7 +497,7 @@ class LLMStageProcessor(StageProcessor):
 
                     for scene in scenes_list:
                         if scene.get("scene_number") == index:
-                            scene["camera_movement"] = generated_text
+                            scene["camera_movement"] = parse_json(generated_text)
                             break
                 # 保存更新后的数据
                 ProjectStage.objects.filter(id=video_stage.id).update(

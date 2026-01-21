@@ -153,34 +153,15 @@ def create_mock_prompt_template_set(apps, schema_editor):
         {
             'stage_type': 'video_generation',
             'model_provider': mock_image2video,
-            'template_content': '''{% if camera_movement and camera_movement is mapping %}
-{% set movement_type = camera_movement.get('movement_type', 'static') %}
-{% set movement_map = {
-    'static': '固定',
-    'zoom_in': '[推进]',
-    'zoom_out': '[拉远]',
-    'pan_left': '[左移]',
-    'pan_right': '[右移]',
-    'tilt_up': '[上摇]',
-    'tilt_down': '[下摇]',
-    'pan_left_continuous': '[左摇]',
-    'pan_right_continuous': '[右摇]',
-    'crane_up': '[上升]',
-    'crane_down': '[下降]',
-    'shake': '[晃动]',
-    'follow': '[跟随]'
-} %}
-{% set movement_instruction = movement_map.get(movement_type, '') %}
-{% if movement_instruction %}
-{{ movement_instruction }}
-{% else %}
-根据图片内容生成视频
-{% endif %}
-{% else %}
-根据图片内容生成视频
-{% endif %}''',
+            'template_content': '''根据图片和运镜参数生成视频
+
+图片URL: {{ image_url }}
+运镜参数: {{ camera_movement }}
+时长: {{ duration|default(3.0) }} 秒
+帧率: {{ fps|default(24) }} fps''',
             'variables': {
-                'camera_movement': {'type': 'json', 'required': False, 'description': '运镜参数，包含movement_type和movement_params'},
+                'image_url': {'type': 'string', 'required': True, 'description': '源图片URL'},
+                'camera_movement': {'type': 'json', 'required': True, 'description': '运镜参数'},
                 'duration': {'type': 'float', 'required': False, 'default': 3.0, 'description': '视频时长'},
                 'fps': {'type': 'int', 'required': False, 'default': 24, 'description': '帧率'}
             }

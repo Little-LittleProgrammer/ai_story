@@ -1,17 +1,17 @@
 """
 图生视频阶段处理器
-职责: 为每个已生成的图片调用VideoGenerator生成视频
+职责: 为每个已生成的图片调用Image2VideoClient生成视频
 遵循单一职责原则(SRP) + 开闭原则(OCP)
 """
 
 import copy
 import logging
 import os
+import asyncio
 from typing import Any, Dict, Generator, List, Optional
 
 from django.conf import settings
 from core.ai_client.factory import create_ai_client
-from core.ai_client.image2video_client import TaskStatus, VideoGenerator
 from core.pipeline.base import PipelineContext, StageProcessor, StageResult
 from django.utils import timezone
 from jinja2 import Template, TemplateError
@@ -20,6 +20,7 @@ from pathlib import Path
 
 from apps.models.models import ModelProvider
 from apps.projects.models import Project, ProjectStage
+from apps.projects.utils import parse_json
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class Image2VideoStageProcessor(StageProcessor):
     职责:
     - 读取image_generation阶段的图片数据
     - 读取camera_movement阶段的运镜参数
-    - 为每个图片调用VideoGenerator生成视频
+    - 为每个图片调用Image2VideoClient生成视频
     - 保存生成的视频到GeneratedVideo模型
     - 支持批量生成和流式进度推送
 
@@ -134,13 +135,14 @@ class Image2VideoStageProcessor(StageProcessor):
                     success=False, error="没有找到分镜数据", can_retry=False
                 )
 
-            # 获取AI客户端
+            # 获取AI客户端提供商
             provider = self._get_image2video_provider(project)
-            video_generator = VideoGenerator(
-                api_token=provider.api_key, use_backup=False
-            )
+            if not provider:
+                return StageResult(
+                    success=False, error="未找到可用的图生视频模型提供商", can_retry=False
+                )
 
-            # 批量生成视频
+            # 批量生成视频（使用流式方法）
             generated_videos = []
             failed_count = 0
 
@@ -153,13 +155,19 @@ class Image2VideoStageProcessor(StageProcessor):
                         failed_count += 1
                         continue
 
-                    # 生成视频
-                    video_url = self._generate_single_video(
+                    # 使用流式方法生成视频（同步调用）
+                    video_url = None
+                    for result in self._generate_single_video_stream(
+                        project=project,
                         storyboard=storyboard,
                         scene_number=index,
-                        video_generator=video_generator,
                         provider=provider,
-                    )
+                    ):
+                        if result.get("type") == "success":
+                            video_url = result.get("video_url")
+                        elif result.get("type") == "error":
+                            logger.error(f"分镜 {index} 视频生成失败: {result.get('error')}")
+                            break
 
                     if video_url:
                         generated_videos.append(
@@ -235,14 +243,23 @@ class Image2VideoStageProcessor(StageProcessor):
                 },
             }
 
-            # 获取分镜列表(从ProjectStage.output_data读取,而非查询Storyboard模型)
+            # 获取分镜列表(从image_generation阶段的output_data读取)
+            image_stage = ProjectStage.objects.filter(
+                project=project, stage_type="image_generation", status="completed"
+            ).first()
+            
+            if not image_stage or not image_stage.output_data:
+                yield {"type": "error", "error": "没有找到图片生成阶段的数据"}
+                return
+
+            # 从image_generation阶段的output_data读取分镜数据
             if storyboard_ids:
-                storyboards = stage.output_data.get("human_text", {}).get("scenes", [])
+                storyboards = image_stage.output_data.get("human_text", {}).get("scenes", [])
                 storyboards = [
-                    i for i in storyboards if i["scene_number"] in storyboard_ids
+                    i for i in storyboards if i.get("scene_number") in storyboard_ids
                 ]
             else:
-                storyboards = stage.output_data.get("human_text", {}).get("scenes", [])
+                storyboards = image_stage.output_data.get("human_text", {}).get("scenes", [])
 
             if not storyboards:
                 yield {"type": "error", "error": "没有找到分镜数据"}
@@ -301,16 +318,18 @@ class Image2VideoStageProcessor(StageProcessor):
                         # 更新storyboard数据
                         storyboard["video_urls"] = video_urls
 
-                        # 保存到当前阶段(image_generation)
-                        scenes = stage.output_data.get("human_text", {}).get(
-                            "scenes", []
-                        )
+                        # 保存到当前阶段(video_generation)
+                        # 从image_stage复制分镜数据，然后添加视频URL
+                        scenes = image_stage.output_data.get("human_text", {}).get("scenes", [])
                         for each in scenes:
-                            if each["scene_number"] == storyboard["scene_number"]:
+                            if each.get("scene_number") == storyboard.get("scene_number"):
                                 each["video_urls"] = video_urls
 
-                        output_data = {"human_text": {"scenes": scenes}}
-                        ProjectStage.objects.filter(id=stage.id).update(output_data=output_data, status="completed", completed_at=timezone.now())
+                        # 确保stage.output_data存在并更新
+                        if not stage.output_data:
+                            stage.output_data = {}
+                        stage.output_data["human_text"] = {"scenes": scenes}
+                        stage.save()
                     else:
                         failed_count += 1
                         yield {
@@ -329,6 +348,27 @@ class Image2VideoStageProcessor(StageProcessor):
 
             # 保存最终结果
             success_count = len(generated_videos)
+            
+            # 更新阶段状态为完成
+            if success_count > 0:
+                # 确保所有视频URL都已保存到stage.output_data
+                # 从image_stage复制完整的分镜数据（包含视频URL）
+                scenes = image_stage.output_data.get("human_text", {}).get("scenes", [])
+                # 更新每个分镜的视频URL
+                for generated_video in generated_videos:
+                    scene_number = generated_video.get("scene_number")
+                    video_urls = generated_video.get("video_urls", [])
+                    for scene in scenes:
+                        if scene.get("scene_number") == scene_number:
+                            scene["video_urls"] = video_urls
+                
+                # 保存到video_generation阶段
+                if not stage.output_data:
+                    stage.output_data = {}
+                stage.output_data["human_text"] = {"scenes": scenes}
+                stage.status = "completed"
+                stage.completed_at = timezone.now()
+                stage.save()
             
             yield {
                 "type": "done",
@@ -398,75 +438,37 @@ class Image2VideoStageProcessor(StageProcessor):
 
     def _generate_single_video(
         self,
+        project: Project,
         storyboard: Dict[str, Any],
         scene_number: int,
-        video_generator: VideoGenerator,
         provider: ModelProvider,
     ) -> Optional[str]:
         """
-        为单个分镜生成视频 (非流式版本)
+        为单个分镜生成视频 (非流式版本，已废弃，请使用 _generate_single_video_stream)
 
         Args:
+            project: 项目对象
             storyboard: 分镜数据字典
             scene_number: 分镜序号
-            video_generator: 视频生成器
             provider: 模型提供商
 
         Returns:
             视频URL或None(失败时)
         """
-        try:
-            # 准备生成参数
-            prompt = self._build_video_prompt(storyboard)
-            image_urls = storyboard.get("urls", [])
-
-            if not image_urls:
-                logger.error(f"分镜 {scene_number} 没有图片URL")
+        # 使用流式方法，收集最后一个结果
+        video_url = None
+        for result in self._generate_single_video_stream(
+            project=project,
+            storyboard=storyboard,
+            scene_number=scene_number,
+            provider=provider,
+        ):
+            if result.get("type") == "success":
+                video_url = result.get("video_url")
+            elif result.get("type") == "error":
+                logger.error(f"分镜 {scene_number} 视频生成失败: {result.get('error')}")
                 return None
-
-            generation_params = {
-                "prompt": prompt,
-                "model": provider.model_name,
-                "image_uri": image_urls[0],  # 使用第一张图片
-                "duration_seconds": int(storyboard.get("duration_seconds", 8)),
-                "aspect_ratio": "9:16",  # 默认竖屏
-                "generate_audio": True,
-            }
-
-            # 调用VideoGenerator创建任务 (同步函数,需要在executor中执行)
-            task_result = video_generator.create_video_task(**generation_params)
-
-            logger.info(f"分镜 {scene_number} 视频任务已创建: {task_result}")
-
-            # # 轮询等待任务完成
-            # task_result = loop.run_in_executor(
-            #     None,
-            #     lambda: video_generator.wait_for_completion(
-            #         task_id=task_id,
-            #         poll_interval=self.poll_interval,
-            #         max_wait_time=self.max_wait_time
-            #     )
-            # )
-
-            # 提取视频URL
-            videos = task_result
-            if not videos:
-                logger.error(f"分镜 {scene_number} 任务完成但没有视频数据")
-                return None
-
-            video_data = videos[0]  # 取第一个视频
-            video_url = video_data.get("url", "")
-
-            logger.info(f"分镜 {scene_number} 视频生成成功: {video_url}")
-            return video_url
-
-        except TimeoutError as e:
-            logger.error(f"分镜 {scene_number} 视频生成超时: {str(e)}")
-            return None
-
-        except Exception as e:
-            logger.error(f"分镜 {scene_number} 视频生成异常: {str(e)}", exc_info=True)
-            return None
+        return video_url
 
     def image_to_base64(self, image_path):
         """将本地图片转换为 Base64 字符串（带格式前缀）"""
@@ -492,7 +494,6 @@ class Image2VideoStageProcessor(StageProcessor):
         Args:
             storyboard: 分镜数据字典
             scene_number: 分镜序号
-            video_generator: 视频生成器
             provider: 模型提供商
 
         Yields:
@@ -500,7 +501,6 @@ class Image2VideoStageProcessor(StageProcessor):
         """
         try:
             # 准备生成参数
-            # toto test
             prompt = self._build_prompt(project, storyboard)
             image_urls = storyboard.get("urls", [])
 
@@ -512,23 +512,138 @@ class Image2VideoStageProcessor(StageProcessor):
                 }
                 return
 
-            model_name = provider.model_name
-            api_key = provider.api_key
-            api_url = provider.api_url
-            # 创建任务
-            client = create_ai_client(provider)
-            video_urls = client._generate_video(
-                api_url=api_url,
-                session_id=api_key,
-                model=model_name,
-                prompt=prompt,
-            )
+            # 获取图片URL
+            # MiniMax API 支持公网 URL 或 Base64 Data URL
+            # 如果是本地路径，需要转换为 Base64 Data URL
+            image_url = image_urls[0].get("url", "")
+            
+            # 如果 image_url 是本地路径（不是 http/https/data URL），转换为Base64 Data URL
+            if image_url and not image_url.startswith(("http://", "https://", "data:")):
+                image_dir = Path(settings.STORAGE_ROOT) / 'image'
+                path_list = image_url.split("/")[-2:]
+                image_path = Path(image_dir, *path_list)
+                if image_path.exists():
+                    base64_image = self.image_to_base64(image_path)
+                    image_url = f"data:image/jpeg;base64,{base64_image}"
+                else:
+                    logger.warning(f"图片文件不存在: {image_path}")
+                    yield {
+                        "type": "error",
+                        "error": f"分镜 {scene_number} 图片文件不存在: {image_path}",
+                        "scene_number": scene_number,
+                    }
+                    return
 
+            # 获取运镜参数
+            camera_movement = storyboard.get("camera_movement", {})
+            
+            # 如果 camera_movement 是字符串（JSON格式），先格式化再解析为字典
+            if isinstance(camera_movement, str):
+                try:
+                    # 使用 parse_json 函数进行格式化和解析
+                    parsed_data = parse_json(camera_movement)
+                    if isinstance(parsed_data, dict):
+                        camera_movement = parsed_data
+                    else:
+                        logger.warning(f"camera_movement 解析后不是字典类型: {type(parsed_data)}")
+                        camera_movement = {}
+                except Exception as e:
+                    logger.warning(f"无法解析camera_movement JSON: {camera_movement}, 错误: {str(e)}")
+                    camera_movement = {}
+
+            # 如果没有camera_movement，使用默认值
+            if not camera_movement:
+                camera_movement = {
+                    "movement_type": "static",
+                    "movement_params": {}
+                }
+
+            # 获取视频时长（从storyboard或使用默认值）
+            # 优先从duration_seconds获取，如果没有则从duration字段解析
+            duration = storyboard.get("duration_seconds")
+            if duration is None:
+                duration_str = storyboard.get("duration", "3秒")
+                # 解析字符串格式的时长（如"5秒"、"4秒"）
+                import re
+                match = re.search(r'(\d+(?:\.\d+)?)', str(duration_str))
+                if match:
+                    duration = float(match.group(1))
+                else:
+                    duration = 3.0
+            else:
+                # 确保duration是数字类型
+                duration = float(duration) if not isinstance(duration, (int, float)) else duration
+            
+            fps = storyboard.get("fps", 24)
+
+            # 创建AI客户端
+            client = create_ai_client(provider)
+
+            # 调用 generate 方法（使用标准接口）
+            # 在同步生成器中运行异步代码
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # 如果事件循环正在运行，创建新任务
+                    task = asyncio.create_task(
+                        client.generate(
+                            image_url=image_url,
+                            camera_movement=camera_movement,
+                            duration=duration,
+                            fps=fps,
+                            prompt=prompt,  # 传递构建好的prompt
+                            resolution=storyboard.get("resolution", "720P"),  # 可选分辨率
+                        )
+                    )
+                    response = loop.run_until_complete(task)
+                else:
+                    response = loop.run_until_complete(
+                        client.generate(
+                            image_url=image_url,
+                            camera_movement=camera_movement,
+                            duration=duration,
+                            fps=fps,
+                            prompt=prompt,
+                            resolution=storyboard.get("resolution", "720P"),
+                        )
+                    )
+            except RuntimeError:
+                # 没有事件循环，创建新的
+                response = asyncio.run(
+                    client.generate(
+                        image_url=image_url,
+                        camera_movement=camera_movement,
+                        duration=duration,
+                        fps=fps,
+                        prompt=prompt,
+                        resolution=storyboard.get("resolution", "720P"),
+                    )
+                )
+
+            # 检查响应
+            if not response.success:
+                yield {
+                    "type": "error",
+                    "error": response.error or "视频生成失败",
+                    "scene_number": scene_number,
+                }
+                return
+
+            # 提取视频URL
+            video_data = response.data or {}
+            video_urls = video_data.get("urls", [])
+            
+            # 如果没有urls，尝试从url字段获取
+            if not video_urls and video_data.get("url"):
+                video_urls = [video_data["url"]]
 
             yield {
                 "type": "video_generated",
                 "scene_number": scene_number,
-                "video_urls": video_urls,
+                "video_urls": {
+                    "data": video_urls,
+                    "metadata": response.metadata
+                },
             }
 
         except Exception as e:
@@ -562,21 +677,38 @@ class Image2VideoStageProcessor(StageProcessor):
         """
         构建提示词
         从PromptTemplate获取模板并使用Jinja2渲染
+        
+        注意：此方法只负责构建 prompt 文本，不处理图片转换
+        图片处理应在 _generate_single_video_stream 中完成
         """
         template = self._get_prompt_template(project)
 
         if not template:
             raise ValueError(f"未找到 {self.stage_type} 阶段的提示词模板")
-        urls = storyboard.get("urls", [])
-        if not urls:
-            raise ValueError(f"分镜 {storyboard.get('scene_number', '')} 没有图片URL")
+        
+        # 复制 storyboard 数据，避免修改原始数据
         storyboard_copy = copy.deepcopy(storyboard)
-        image_url = urls[0].get("url", "")
-        image_dir = Path(settings.STORAGE_ROOT) / 'image'
-        path_list = image_url.split("/")[-2:]
-        image_path = Path(image_dir, *path_list)
-        base64_image = self.image_to_base64(image_path)
-        storyboard_copy["url"] = base64_image
+        
+        # 处理 camera_movement：如果是字符串（JSON格式），解析为字典
+        camera_movement = storyboard_copy.get("camera_movement", {})
+        if isinstance(camera_movement, str):
+            try:
+                import json
+                camera_movement = json.loads(camera_movement)
+                storyboard_copy["camera_movement"] = camera_movement
+            except json.JSONDecodeError:
+                logger.warning(f"无法解析camera_movement JSON: {camera_movement}")
+                storyboard_copy["camera_movement"] = {
+                    "movement_type": "static",
+                    "movement_params": {}
+                }
+        elif not camera_movement:
+            # 如果没有camera_movement，使用默认值
+            storyboard_copy["camera_movement"] = {
+                "movement_type": "static",
+                "movement_params": {}
+            }
+        
         try:
             # 准备模板变量
             template_vars = {

@@ -50,7 +50,7 @@ class ModelProvider(models.Model):
 
     # API配置
     api_url = models.URLField('API地址')
-    api_key = models.CharField('API密钥', max_length=512)  # 后续加密存储
+    api_key = models.CharField('API密钥', max_length=2048)  # 后续加密存储，预留足够空间
     model_name = models.CharField('模型名称', max_length=255)
 
     # LLM专用参数

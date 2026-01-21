@@ -715,7 +715,7 @@ export default {
         return '';
       }
       const index = this.getSelectedVideoIndex(sceneNumber);
-      return scene.video_urls[index].url || scene.video_urls[0].url;
+      return scene.video_urls[index].url || scene.video_urls[0].url || scene.video_urls[index];
     },
 
     // 选择指定索引的视频

@@ -4,10 +4,15 @@
 遵循单一职责原则(SRP)
 """
 
+import json
+import logging
+
 from rest_framework import serializers
 
 from apps.projects.utils import parse_storyboard_json
 from .models import Project, ProjectStage, ProjectModelConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectStageSerializer(serializers.ModelSerializer):
@@ -31,13 +36,33 @@ class ProjectStageSerializer(serializers.ModelSerializer):
         stage_type = data.get("stage_type")
         if stage_type == "storyboard":
             try:    
-                data["output_data"]["human_text"] = parse_storyboard_json(data["output_data"].get("storyboard_text", ""))
-            except Exception:
+                if isinstance(data["output_data"], str):
+                    # 如果 output_data 是字符串，先解析为字典
+                    try:
+                        output_data_dict = json.loads(data["output_data"]) if data["output_data"] else {}
+                    except (json.JSONDecodeError, TypeError):
+                        output_data_dict = {}
+                    # 解析 storyboard_text 并添加到 human_text
+                    storyboard_text = output_data_dict.get("storyboard_text", data["output_data"] if data["output_data"] else "")
+                    if storyboard_text:
+                        output_data_dict["human_text"] = parse_storyboard_json(storyboard_text)
+                    data["output_data"] = output_data_dict
+                elif isinstance(data["output_data"], dict):
+                    # 如果 output_data 是字典，直接处理
+                    storyboard_text = data["output_data"].get("storyboard_text", "")
+                    if storyboard_text:
+                        data["output_data"]["human_text"] = parse_storyboard_json(storyboard_text)
+            except Exception as e:
+                logger.debug(f"解析 storyboard output_data 失败: {str(e)}")
                 pass
         elif stage_type == "image_generation":
             try:
-                data["input_data"]["human_text"] = parse_storyboard_json(data["input_data"].get("storyboard_text", ""))
-            except Exception:
+                if isinstance(data["input_data"], dict):
+                    storyboard_text = data["input_data"].get("storyboard_text", "")
+                    if storyboard_text:
+                        data["input_data"]["human_text"] = parse_storyboard_json(storyboard_text)
+            except Exception as e:
+                logger.debug(f"解析 image_generation input_data 失败: {str(e)}")
                 pass
         return data
 

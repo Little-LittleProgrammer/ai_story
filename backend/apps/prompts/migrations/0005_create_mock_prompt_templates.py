@@ -86,16 +86,16 @@ def create_mock_prompt_template_set(apps, schema_editor):
 3. 以 JSON 数组格式输出
 
 输出格式示例：
-[
-  {
-    "scene_number": 1,
-    "scene_description": "场景描述",
-    "narration_text": "旁白文字",
-    "image_prompt": "英文图片提示词",
-    "duration_seconds": 3,
-    "camera_movement": "static"
-  }
-]
+{
+  "scenes": [
+    {
+      "scene_number": 1,
+      "narration": "旁白文本",
+      "visual_prompt": "视觉提示词",
+      "shot_type": "镜头类型"
+    }
+  ]
+}
 
 请直接输出 JSON 数组。''',
             'variables': {
@@ -106,9 +106,10 @@ def create_mock_prompt_template_set(apps, schema_editor):
         {
             'stage_type': 'image_generation',
             'model_provider': mock_text2image,
-            'template_content': '''{{ image_prompt }}''',
+            'template_content': '''{{ visual_prompt }}''',
             'variables': {
-                'image_prompt': {'type': 'string', 'required': True, 'description': '图片生成提示词'}
+                'visual_prompt': {'type': 'string', 'required': False, 'description': '视觉提示词（优先使用）'},
+                'image_prompt': {'type': 'string', 'required': False, 'description': '图片生成提示词（备用）'}
             }
         },
         {
@@ -152,15 +153,34 @@ def create_mock_prompt_template_set(apps, schema_editor):
         {
             'stage_type': 'video_generation',
             'model_provider': mock_image2video,
-            'template_content': '''根据图片和运镜参数生成视频
-
-图片URL: {{ image_url }}
-运镜参数: {{ camera_movement }}
-时长: {{ duration|default(3.0) }} 秒
-帧率: {{ fps|default(24) }} fps''',
+            'template_content': '''{% if camera_movement and camera_movement is mapping %}
+{% set movement_type = camera_movement.get('movement_type', 'static') %}
+{% set movement_map = {
+    'static': '固定',
+    'zoom_in': '[推进]',
+    'zoom_out': '[拉远]',
+    'pan_left': '[左移]',
+    'pan_right': '[右移]',
+    'tilt_up': '[上摇]',
+    'tilt_down': '[下摇]',
+    'pan_left_continuous': '[左摇]',
+    'pan_right_continuous': '[右摇]',
+    'crane_up': '[上升]',
+    'crane_down': '[下降]',
+    'shake': '[晃动]',
+    'follow': '[跟随]'
+} %}
+{% set movement_instruction = movement_map.get(movement_type, '') %}
+{% if movement_instruction %}
+{{ movement_instruction }}
+{% else %}
+根据图片内容生成视频
+{% endif %}
+{% else %}
+根据图片内容生成视频
+{% endif %}''',
             'variables': {
-                'image_url': {'type': 'string', 'required': True, 'description': '源图片URL'},
-                'camera_movement': {'type': 'json', 'required': True, 'description': '运镜参数'},
+                'camera_movement': {'type': 'json', 'required': False, 'description': '运镜参数，包含movement_type和movement_params'},
                 'duration': {'type': 'float', 'required': False, 'default': 3.0, 'description': '视频时长'},
                 'fps': {'type': 'int', 'required': False, 'default': 24, 'description': '帧率'}
             }

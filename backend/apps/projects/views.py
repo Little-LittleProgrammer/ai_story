@@ -649,6 +649,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
         # 更新输出数据(如果提供)
         if "output_data" in request.data:
             stage.output_data = request.data["output_data"]
+        
+        # 确保 output_data 不为 None（数据库约束要求）
+        if stage.output_data is None:
+            stage.output_data = {}
 
         stage.save()
 

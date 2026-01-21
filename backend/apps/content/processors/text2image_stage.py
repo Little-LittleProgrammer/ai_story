@@ -397,13 +397,22 @@ class Text2ImageStageProcessor(StageProcessor):
             template_set = PromptTemplateSet.objects.filter(is_default=True).first()
 
         if not template_set:
+            logger.warning(f"项目 {project.id} 未找到提示词集")
             return None
+        
         # 获取对应阶段的模板 - 使用select_related预加载model_provider
         template = PromptTemplate.objects.select_related('model_provider').filter(
             template_set=template_set,
             stage_type=self.stage_type,
             is_active=True
         ).first()
+
+        if template:
+            logger.debug(f"找到提示词模板: template_set={template_set.name}, stage_type={self.stage_type}, template_id={template.id}")
+            if not template.template_content or not template.template_content.strip():
+                logger.warning(f"提示词模板内容为空: template_id={template.id}")
+        else:
+            logger.warning(f"未找到 {self.stage_type} 阶段的提示词模板: template_set={template_set.name}")
 
         return template
 
@@ -445,6 +454,16 @@ class Text2ImageStageProcessor(StageProcessor):
             global_vars = self._get_global_variables_sync(project)
 
             # 准备模板变量（优先级：storyboard > project > global_vars）
+            # 注意：storyboard中可能使用visual_prompt字段，但模板中使用image_prompt
+            # 为了兼容性，同时提供两个变量名
+            storyboard_vars = dict(storyboard)
+            # 如果storyboard中有visual_prompt但没有image_prompt，则添加image_prompt别名
+            if 'visual_prompt' in storyboard_vars and 'image_prompt' not in storyboard_vars:
+                storyboard_vars['image_prompt'] = storyboard_vars['visual_prompt']
+            # 如果storyboard中有image_prompt但没有visual_prompt，则添加visual_prompt别名
+            elif 'image_prompt' in storyboard_vars and 'visual_prompt' not in storyboard_vars:
+                storyboard_vars['visual_prompt'] = storyboard_vars['image_prompt']
+            
             template_vars = {
                 **global_vars,  # 全局变量（最低优先级）
                 "random_seed": random.randint(1, 1000000),
@@ -453,17 +472,28 @@ class Text2ImageStageProcessor(StageProcessor):
                     'description': project.description,
                     'original_topic': project.original_topic,
                 },
-                **storyboard  # 合并输入数据作为变量（最高优先级）
+                **storyboard_vars  # 合并输入数据作为变量（最高优先级）
             }
+
+            # 调试日志：记录关键信息
+            logger.debug(f"分镜 {storyboard.get('sequence_number', storyboard.get('scene_number', 'Unknown'))} 构建提示词:")
+            logger.debug(f"  - Storyboard数据: {storyboard}")
+            logger.debug(f"  - 模板内容长度: {len(template.template_content) if template.template_content else 0}")
+            logger.debug(f"  - 模板内容预览: {template.template_content[:200] if template.template_content else 'None'}...")
+            logger.debug(f"  - 模板变量keys: {list(template_vars.keys())}")
 
             # 渲染Jinja2模板
             jinja_template = Template(template.template_content)
             rendered_prompt = jinja_template.render(**template_vars)
 
+            # 调试日志：记录渲染结果
+            logger.debug(f"  - 渲染后prompt长度: {len(rendered_prompt) if rendered_prompt else 0}")
+            logger.debug(f"  - 渲染后prompt预览: {rendered_prompt[:200] if rendered_prompt else 'None'}...")
+
             return rendered_prompt
 
         except TemplateError as e:
-            logger.error(f"提示词模板渲染失败: {str(e)}")
+            logger.error(f"提示词模板渲染失败: {str(e)}", exc_info=True)
             raise ValueError(f"提示词模板渲染失败: {str(e)}")
             
     def _generate_single_image(
@@ -491,7 +521,22 @@ class Text2ImageStageProcessor(StageProcessor):
         try:
             # 准备生成参数
             # 构建提示词
+            logger.info(f"开始为分镜生成图片: sequence_number={storyboard.get('sequence_number', storyboard.get('scene_number', 'Unknown'))}")
+            logger.debug(f"Storyboard完整数据: {storyboard}")
+            
             prompt = self._build_prompt(project, storyboard)
+            
+            # 验证 prompt 不为空
+            if not prompt or not prompt.strip():
+                logger.error(
+                    f"分镜 {storyboard.get('sequence_number', storyboard.get('scene_number', 'Unknown'))} 提示词为空！\n"
+                    f"  - Storyboard数据: {storyboard}\n"
+                    f"  - Prompt值: '{prompt}'\n"
+                    f"  - Prompt类型: {type(prompt)}"
+                )
+                return None
+            
+            logger.info(f"提示词构建成功，长度: {len(prompt)}")
             model_name = provider.model_name
             api_key = provider.api_key
             api_url = provider.api_url
@@ -517,12 +562,17 @@ class Text2ImageStageProcessor(StageProcessor):
                 return None
 
             # 解析响应
-            # 假设响应格式: {"data": [{"url": "...", "width": 1920, "height": 1080}]}
-            if 'data' not in response or not response['data']:
-                logger.error(f"分镜 {storyboard.get('sequence_number')} 响应格式错误: {response}")
+            # AIResponse对象格式: AIResponse(success=True, data={'images': [{"url": "...", "width": 1920, "height": 1080}]})
+            if not response.success:
+                logger.error(f"分镜 {storyboard.get('sequence_number')} 图片生成失败: {response.error}")
                 return None
+            
+            if not response.data or 'images' not in response.data or not response.data['images']:
+                logger.error(f"分镜 {storyboard.get('sequence_number')} 响应格式错误: {response.data}")
+                return None
+            
             # [{"url": "http://"}]
-            image_data = response['data']
+            image_data = response.data['images']
 
             return image_data
 

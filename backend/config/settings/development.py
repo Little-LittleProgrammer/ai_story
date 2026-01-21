@@ -12,6 +12,21 @@ ALLOWED_HOSTS = ['*']
 # CORS配置 - 开发环境允许所有源
 CORS_ALLOW_ALL_ORIGINS = True
 
+# CSRF配置 - 开发环境禁用CSRF检查（REST API使用JWT认证）
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+
+# REST Framework - 开发环境仅使用JWT认证（避免CSRF问题）
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # 开发环境移除 SessionAuthentication 以避免 CSRF 问题
+        # 'rest_framework.authentication.SessionAuthentication',
+    ],
+}
+
 # 数据库配置 - 支持 Docker 环境中的 PostgreSQL
 # 如果设置了 DATABASE_URL 环境变量，使用 PostgreSQL；否则使用 SQLite
 import os

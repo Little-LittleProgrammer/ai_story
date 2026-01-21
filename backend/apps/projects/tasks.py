@@ -153,6 +153,9 @@ def execute_llm_stage(
             stage.status = 'failed'
             stage.error_message = error_msg
             stage.retry_count += 1
+            # 确保 output_data 不为 None（数据库约束要求）
+            if stage.output_data is None:
+                stage.output_data = {}
             stage.save()
         except Exception:
             pass
@@ -287,6 +290,9 @@ def execute_text2image_stage(
             stage.status = 'failed'
             stage.error_message = error_msg
             stage.retry_count += 1
+            # 确保 output_data 不为 None（数据库约束要求）
+            if stage.output_data is None:
+                stage.output_data = {}
             stage.save()
         except Exception:
             pass
@@ -414,6 +420,9 @@ def execute_image2video_stage(
             stage.status = 'failed'
             stage.error_message = error_msg
             stage.retry_count += 1
+            # 确保 output_data 不为 None（数据库约束要求）
+            if stage.output_data is None:
+                stage.output_data = {}
             stage.save()
         except Exception:
             pass

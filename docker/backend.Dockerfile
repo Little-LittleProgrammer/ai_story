@@ -10,10 +10,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Python依赖
+# 注意：构建上下文是项目根目录，所以可以直接复制 requirements.txt
 COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
+
 # 复制项目文件
-COPY . .
+COPY backend/ .
 
 # 创建必要的目录
 RUN mkdir -p staticfiles media logs

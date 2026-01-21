@@ -24,8 +24,8 @@ services:
   # Django后端
   backend:
     build:
-      context: ./backend
-      dockerfile: ../docker/backend.Dockerfile
+      context: .
+      dockerfile: docker/backend.Dockerfile
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
@@ -34,6 +34,9 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/5
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ai_story
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - db
       - redis
@@ -41,14 +44,17 @@ services:
   # Celery Worker
   celery:
     build:
-      context: ./backend
-      dockerfile: ../docker/backend.Dockerfile
+      context: .
+      dockerfile: docker/backend.Dockerfile
     command: celery -A config worker -l info
     volumes:
       - ./backend:/app
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/5
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ai_story
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - db
       - redis
@@ -56,14 +62,17 @@ services:
   # Celery Beat (定时任务)
   celery-beat:
     build:
-      context: ./backend
-      dockerfile: ../docker/backend.Dockerfile
+      context: .
+      dockerfile: docker/backend.Dockerfile
     command: celery -A config beat -l info
     volumes:
       - ./backend:/app
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.development
       - REDIS_URL=redis://redis:6379/5
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ai_story
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - db
       - redis
@@ -82,6 +91,7 @@ services:
     environment:
       - VUE_APP_API_BASE_URL=http://localhost:8000/api/v1
       - VUE_APP_WS_URL=ws://localhost:8000
+      - VUE_APP_BACKEND_URL=http://backend:8000
     depends_on:
       - backend
 

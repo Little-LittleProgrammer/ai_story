@@ -19,7 +19,7 @@ class WebSocketClient {
 
     /* eslint-disable no-unreachable */
     // 以下代码待后端实现后启用
-    const wsUrl = process.env.VUE_APP_WS_URL || 'ws://localhost:8010';
+    const wsUrl = process.env.VUE_APP_WS_URL || 'ws://localhost:8000';
     this.socket = io(`${wsUrl}/ws/projects/${projectId}/`, {
       transports: ['websocket'],
       reconnection: true,

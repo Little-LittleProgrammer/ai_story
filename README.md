@@ -13,10 +13,12 @@ AI Story 是一个基于人工智能的故事视频自动化生成平台。只�
 ### 使用 Docker Compose 一键启动
 
 ```bash
-# 启动所有服务
+# 启动所有服务（首次启动会自动构建镜像）
+# 如果修改了 requirements.txt 或 Dockerfile，需要重新构建：
+# docker-compose build --no-cache
 docker-compose up -d
 
-# 初始化数据库
+# 等待服务启动后，初始化数据库
 docker-compose exec backend python manage.py migrate
 
 # 创建管理员账号
@@ -26,6 +28,12 @@ docker-compose exec backend python manage.py createsuperuser
 **访问地址:**
 - 前端应用: http://localhost:3000
 - 后端管理: http://localhost:8000/admin
+
+**注意事项:**
+- 首次启动可能需要几分钟时间构建 Docker 镜像
+- 如果遇到端口冲突，请检查 3000、8000、5432、6379 端口是否被占用
+- 查看服务日志: `docker-compose logs -f [service_name]`
+- 停止服务: `docker-compose down`
 
 详细的开发文档请查看 [CLAUDE.md](CLAUDE.md)
 

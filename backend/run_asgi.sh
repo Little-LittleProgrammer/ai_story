@@ -10,4 +10,4 @@ echo "🌐 地址: http://localhost:8000"
 echo ""
 
 # 使用Daphne运行ASGI应用
-daphne -b 0.0.0.0 -p 8010 config.asgi:application
+daphne -b 0.0.0.0 -p 8000 config.asgi:application

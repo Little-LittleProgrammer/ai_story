@@ -417,7 +417,7 @@ class ComfyUIClient(BaseText2ImageClient):
                             )
 
                             # 构建 URL (使用相对路径)
-                            image_url = f"http://127.0.0.1:8010/api/v1/content/storage/image/{relative_path}"
+                            image_url = f"http://127.0.0.1:8000/api/v1/content/storage/image/{relative_path}"
                             image_urls.append({"url": image_url})
 
                         else:
@@ -575,7 +575,7 @@ class ComfyUIClient(BaseText2ImageClient):
                             )
 
                             # 构建 URL (使用相对路径)
-                            image_url = f"http://127.0.0.1:8010/api/v1/content/storage/video/{relative_path}"
+                            image_url = f"http://127.0.0.1:8000/api/v1/content/storage/video/{relative_path}"
                             image_urls.append({"url": image_url})
 
                         else:

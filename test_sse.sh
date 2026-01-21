@@ -2,7 +2,7 @@
 # 测试SSE流式接口
 
 PROJECT_ID="d4fad65b-d862-4540-ad32-1061ccaa91a9"
-API_URL="http://localhost:8010/api/v1/projects/projects/${PROJECT_ID}/stream/"
+API_URL="http://localhost:8000/api/v1/projects/projects/${PROJECT_ID}/stream/"
 
 echo "🧪 测试SSE流式接口..."
 echo "📡 URL: ${API_URL}"

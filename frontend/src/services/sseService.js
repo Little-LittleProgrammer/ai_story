@@ -7,7 +7,7 @@
  * - 所有阶段: GET /api/v1/sse/projects/{project_id}/
  */
 
-const API_BASE_URL = process.env.VUE_APP_API_BASE_URL || 'http://localhost:8010';
+const API_BASE_URL = process.env.VUE_APP_API_BASE_URL || 'http://localhost:8000';
 
 /**
  * SSE客户端类
